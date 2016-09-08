@@ -1,3 +1,4 @@
+using System;
 using Abp.Web;
 
 namespace Abp.WebApi.Controllers.Dynamic.Builders
@@ -7,24 +8,33 @@ namespace Abp.WebApi.Controllers.Dynamic.Builders
     /// </summary>
     internal static class DynamicApiVerbHelper
     {
-        private static HttpVerb GetConventionalVerbForMethodName(string methodName)
+        public  static HttpVerb GetConventionalVerbForMethodName(string methodName)
         {
-            if (methodName.StartsWith("Get"))
+            if (methodName.StartsWith("Get", StringComparison.InvariantCultureIgnoreCase))
             {
                 return HttpVerb.Get;
             }
 
-            if (methodName.StartsWith("Update") || methodName.StartsWith("Put"))
+            if (methodName.StartsWith("Put", StringComparison.InvariantCultureIgnoreCase) || 
+                methodName.StartsWith("Update", StringComparison.InvariantCultureIgnoreCase))
             {
                 return HttpVerb.Put;
             }
 
-            if (methodName.StartsWith("Delete") || methodName.StartsWith("Remove"))
+            if (methodName.StartsWith("Patch", StringComparison.InvariantCultureIgnoreCase))
+            {
+                return HttpVerb.Patch;
+            }
+
+            if (methodName.StartsWith("Delete", StringComparison.InvariantCultureIgnoreCase) ||
+                methodName.StartsWith("Remove", StringComparison.InvariantCultureIgnoreCase))
             {
                 return HttpVerb.Delete;
             }
 
-            if (methodName.StartsWith("Create") || methodName.StartsWith("Post"))
+            if (methodName.StartsWith("Post", StringComparison.InvariantCultureIgnoreCase) || 
+                methodName.StartsWith("Create", StringComparison.InvariantCultureIgnoreCase) ||
+                methodName.StartsWith("Insert", StringComparison.InvariantCultureIgnoreCase))
             {
                 return HttpVerb.Post;
             }
@@ -32,7 +42,7 @@ namespace Abp.WebApi.Controllers.Dynamic.Builders
             return GetDefaultHttpVerb();
         }
 
-        private static HttpVerb GetDefaultHttpVerb()
+        public static HttpVerb GetDefaultHttpVerb()
         {
             return HttpVerb.Post;
         }

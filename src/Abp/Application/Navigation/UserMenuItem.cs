@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using Abp.Localization;
 
 namespace Abp.Application.Navigation
 {
@@ -23,9 +24,19 @@ namespace Abp.Application.Navigation
         public string DisplayName { get; private set; }
 
         /// <summary>
+        /// The Display order of the menu. Optional.
+        /// </summary>
+        public int Order { get; set; }
+
+        /// <summary>
         /// The URL to navigate when this menu item is selected.
         /// </summary>
         public string Url { get; set; }
+
+        /// <summary>
+        /// A custom object related to this menu item.
+        /// </summary>
+        public object CustomData { get; set; }
 
         /// <summary>
         /// Sub items of this menu item.
@@ -43,12 +54,14 @@ namespace Abp.Application.Navigation
         /// <summary>
         /// Creates a new <see cref="UserMenuItem"/> object from given <see cref="MenuItemDefinition"/>.
         /// </summary>
-        internal UserMenuItem(MenuItemDefinition menuItemDefinition)
+        internal UserMenuItem(MenuItemDefinition menuItemDefinition, ILocalizationContext localizationContext)
         {
             Name = menuItemDefinition.Name;
             Icon = menuItemDefinition.Icon;
-            DisplayName = menuItemDefinition.DisplayName.Localize();
+            DisplayName = menuItemDefinition.DisplayName.Localize(localizationContext);
+            Order = menuItemDefinition.Order;
             Url = menuItemDefinition.Url;
+            CustomData = menuItemDefinition.CustomData;
             Items = new List<UserMenuItem>();
         }
     }

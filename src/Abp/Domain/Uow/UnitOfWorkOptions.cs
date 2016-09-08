@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Transactions;
 
 namespace Abp.Domain.Uow
@@ -10,6 +9,11 @@ namespace Abp.Domain.Uow
     /// </summary>
     public class UnitOfWorkOptions
     {
+        /// <summary>
+        /// Scope option.
+        /// </summary>
+        public TransactionScopeOption? Scope { get; set; }
+
         /// <summary>
         /// Is this UOW transactional?
         /// Uses default value if not supplied.
@@ -49,11 +53,16 @@ namespace Abp.Domain.Uow
 
         internal void FillDefaultsForNonProvidedOptions(IUnitOfWorkDefaultOptions defaultOptions)
         {
-            //TODO: Do not change options object!!!
+            //TODO: Do not change options object..?
 
             if (!IsTransactional.HasValue)
             {
                 IsTransactional = defaultOptions.IsTransactional;
+            }
+
+            if (!Scope.HasValue)
+            {
+                Scope = defaultOptions.Scope;
             }
 
             if (!Timeout.HasValue && defaultOptions.Timeout.HasValue)

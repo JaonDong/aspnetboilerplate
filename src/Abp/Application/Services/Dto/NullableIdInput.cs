@@ -1,11 +1,11 @@
 namespace Abp.Application.Services.Dto
 {
     /// <summary>
-    /// This <see cref="IInputDto"/> can be directly used (or inherited)
+    /// This DTO can be directly used (or inherited)
     /// to pass an nullable Id value to an application service method.
     /// </summary>
     /// <typeparam name="TId">Type of the Id</typeparam>
-    public class NullableIdInput<TId> : IInputDto
+    public class NullableIdInput<TId>
         where TId : struct
     {
         public TId? Id { get; set; }
@@ -15,7 +15,7 @@ namespace Abp.Application.Services.Dto
 
         }
 
-        public NullableIdInput(TId id)
+        public NullableIdInput(TId? id)
         {
             Id = id;
         }
@@ -31,7 +31,7 @@ namespace Abp.Application.Services.Dto
 
         }
 
-        public NullableIdInput(int id)
+        public NullableIdInput(int? id)
             : base(id)
         {
 

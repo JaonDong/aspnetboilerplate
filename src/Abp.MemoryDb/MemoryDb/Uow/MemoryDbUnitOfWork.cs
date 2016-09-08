@@ -6,7 +6,7 @@ using Abp.MemoryDb.Configuration;
 namespace Abp.MemoryDb.Uow
 {
     /// <summary>
-    /// Implements Unit of work for MongoDB.
+    /// Implements Unit of work for MemoryDb.
     /// </summary>
     public class MemoryDbUnitOfWork : UnitOfWorkBase, ITransientDependency
     {
@@ -21,8 +21,16 @@ namespace Abp.MemoryDb.Uow
         /// <summary>
         /// Constructor.
         /// </summary>
-        public MemoryDbUnitOfWork(IAbpMemoryDbModuleConfiguration configuration, MemoryDatabase memoryDatabase, IUnitOfWorkDefaultOptions defaultOptions)
-            : base(defaultOptions)
+        public MemoryDbUnitOfWork(
+            IAbpMemoryDbModuleConfiguration configuration, 
+            MemoryDatabase memoryDatabase, 
+            IConnectionStringResolver connectionStringResolver,
+            IUnitOfWorkFilterExecuter filterExecuter,
+            IUnitOfWorkDefaultOptions defaultOptions)
+            : base(
+                  connectionStringResolver, 
+                  defaultOptions,
+                  filterExecuter)
         {
             _configuration = configuration;
             _memoryDatabase = memoryDatabase;

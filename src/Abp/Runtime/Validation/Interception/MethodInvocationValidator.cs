@@ -6,28 +6,50 @@ using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Reflection;
 using Abp.Collections.Extensions;
+using Abp.Configuration.Startup;
+using Abp.Dependency;
+using Abp.Reflection;
 
 namespace Abp.Runtime.Validation.Interception
 {
     /// <summary>
     /// This class is used to validate a method call (invocation) for method arguments.
     /// </summary>
-    internal class MethodInvocationValidator
+    public class MethodInvocationValidator : ITransientDependency
     {
-        private readonly object[] _parameterValues;
-        private readonly ParameterInfo[] _parameters;
-        private readonly List<ValidationResult> _validationErrors;
+        protected MethodInfo Method { get; private set; }
+        protected object[] ParameterValues { get; private set; }
+        protected ParameterInfo[] Parameters { get; private set; }
+        protected List<ValidationResult> ValidationErrors { get; }
+
+        private readonly IValidationConfiguration _configuration;
 
         /// <summary>
         /// Creates a new <see cref="MethodInvocationValidator"/> instance.
         /// </summary>
+        public MethodInvocationValidator(IValidationConfiguration configuration)
+        {
+            _configuration = configuration;
+            ValidationErrors = new List<ValidationResult>();
+        }
+
         /// <param name="method">Method to be validated</param>
         /// <param name="parameterValues">List of arguments those are used to call the <paramref name="method"/>.</param>
-        public MethodInvocationValidator(MethodInfo method, object[] parameterValues)
+        public virtual void Initialize(MethodInfo method, object[] parameterValues)
         {
-            _parameterValues = parameterValues;
-            _parameters = method.GetParameters();
-            _validationErrors = new List<ValidationResult>();
+            if (method == null)
+            {
+                throw new ArgumentNullException(nameof(method));
+            }
+
+            if (parameterValues == null)
+            {
+                throw new ArgumentNullException(nameof(parameterValues));
+            }
+
+            Method = method;
+            ParameterValues = parameterValues;
+            Parameters = method.GetParameters();
         }
 
         /// <summary>
@@ -35,32 +57,63 @@ namespace Abp.Runtime.Validation.Interception
         /// </summary>
         public void Validate()
         {
-            if (_parameters.IsNullOrEmpty())
+            CheckInitialized();
+
+            if (!Method.IsPublic)
             {
-                //Object has no parameter, no need to validate.
                 return;
             }
 
-            if (_parameters.Length != _parameterValues.Length)
+            if (IsValidationDisabled())
             {
-                //This is not possible actually
+                return;                
+            }
+
+            if (Parameters.IsNullOrEmpty())
+            {
+                return;
+            }
+
+            if (Parameters.Length != ParameterValues.Length)
+            {
                 throw new Exception("Method parameter count does not match with argument count!");
             }
 
-            for (var i = 0; i < _parameters.Length; i++)
+            for (var i = 0; i < Parameters.Length; i++)
             {
-                ValidateMethodParameter(_parameters[i], _parameterValues[i]);
+                ValidateMethodParameter(Parameters[i], ParameterValues[i]);
             }
 
-            if (_validationErrors.Any())
+            if (ValidationErrors.Any())
             {
-                throw new AbpValidationException("Method arguments are not valid! See ValidationErrors for details.") { ValidationErrors = _validationErrors };
+                throw new AbpValidationException(
+                    "Method arguments are not valid! See ValidationErrors for details.",
+                    ValidationErrors
+                    );
             }
 
-            foreach (var parameterValue in _parameterValues)
+            foreach (var parameterValue in ParameterValues)
             {
                 NormalizeParameter(parameterValue);
             }
+        }
+
+        private void CheckInitialized()
+        {
+            if (Method == null)
+            {
+                throw new AbpException("This object has not been initialized. Call Initialize method first.");
+            }
+        }
+
+        protected virtual bool IsValidationDisabled()
+        {
+            if (Method.IsDefined(typeof(EnableValidationAttribute), true))
+            {
+                return false;
+            }
+
+            return ReflectionHelper.GetSingleAttributeOfMemberOrDeclaringTypeOrDefault<DisableValidationAttribute>(Method) != null;
         }
 
         /// <summary>
@@ -68,13 +121,15 @@ namespace Abp.Runtime.Validation.Interception
         /// </summary>
         /// <param name="parameterInfo">Parameter of the method to validate</param>
         /// <param name="parameterValue">Value to validate</param>
-        private void ValidateMethodParameter(ParameterInfo parameterInfo, object parameterValue)
+        protected virtual void ValidateMethodParameter(ParameterInfo parameterInfo, object parameterValue)
         {
             if (parameterValue == null)
             {
-                if (!parameterInfo.IsOptional && !parameterInfo.IsOut)
+                if (!parameterInfo.IsOptional && 
+                    !parameterInfo.IsOut && 
+                    !TypeHelper.IsPrimitiveExtendedIncludingNullable(parameterInfo.ParameterType))
                 {
-                    _validationErrors.Add(new ValidationResult(parameterInfo.Name + " is null!", new[] { parameterInfo.Name }));
+                    ValidationErrors.Add(new ValidationResult(parameterInfo.Name + " is null!", new[] { parameterInfo.Name }));
                 }
 
                 return;
@@ -83,9 +138,17 @@ namespace Abp.Runtime.Validation.Interception
             ValidateObjectRecursively(parameterValue);
         }
 
-        private void ValidateObjectRecursively(object validatingObject)
+        protected virtual void ValidateObjectRecursively(object validatingObject)
         {
-            if (validatingObject is IEnumerable)
+            if (validatingObject == null)
+            {
+                return;
+            }
+
+            SetDataAnnotationAttributeErrors(validatingObject);
+
+            //Validate items of enumerable
+            if (validatingObject is IEnumerable && !(validatingObject is IQueryable))
             {
                 foreach (var item in (validatingObject as IEnumerable))
                 {
@@ -93,21 +156,38 @@ namespace Abp.Runtime.Validation.Interception
                 }
             }
 
-            if (!(validatingObject is IValidate))
+            if (validatingObject is ICustomValidate)
+            {
+                (validatingObject as ICustomValidate).AddValidationErrors(ValidationErrors);
+            }
+
+            //Do not recursively validate for enumerable objects
+            if (validatingObject is IEnumerable)
             {
                 return;
             }
 
-            SetValidationAttributeErrors(validatingObject);
+            var validatingObjectType = validatingObject.GetType();
 
-            if (validatingObject is ICustomValidate)
+            //Do not recursively validate for primitive objects
+            if (TypeHelper.IsPrimitiveExtendedIncludingNullable(validatingObjectType))
             {
-                (validatingObject as ICustomValidate).AddValidationErrors(_validationErrors);
+                return;
+            }
+
+            if (_configuration.IgnoredTypes.Any(t => t.IsInstanceOfType(validatingObject)))
+            {
+                return;
             }
 
             var properties = TypeDescriptor.GetProperties(validatingObject).Cast<PropertyDescriptor>();
             foreach (var property in properties)
             {
+                if (property.Attributes.OfType<DisableValidationAttribute>().Any())
+                {
+                    continue;
+                }
+
                 ValidateObjectRecursively(property.GetValue(validatingObject));
             }
         }
@@ -115,7 +195,7 @@ namespace Abp.Runtime.Validation.Interception
         /// <summary>
         /// Checks all properties for DataAnnotations attributes.
         /// </summary>
-        private void SetValidationAttributeErrors(object validatingObject)
+        protected virtual void SetDataAnnotationAttributeErrors(object validatingObject)
         {
             var properties = TypeDescriptor.GetProperties(validatingObject).Cast<PropertyDescriptor>();
             foreach (var property in properties)
@@ -128,21 +208,22 @@ namespace Abp.Runtime.Validation.Interception
 
                 var validationContext = new ValidationContext(validatingObject)
                 {
-                    DisplayName = property.Name,
+                    DisplayName = property.DisplayName,
                     MemberName = property.Name
                 };
+
                 foreach (var attribute in validationAttributes)
                 {
                     var result = attribute.GetValidationResult(property.GetValue(validatingObject), validationContext);
                     if (result != null)
                     {
-                        _validationErrors.Add(result);
+                        ValidationErrors.Add(result);
                     }
                 }
             }
         }
 
-        private static void NormalizeParameter(object parameterValue)
+        protected virtual void NormalizeParameter(object parameterValue)
         {
             if (parameterValue is IShouldNormalize)
             {

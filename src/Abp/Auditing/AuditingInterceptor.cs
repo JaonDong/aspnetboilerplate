@@ -1,61 +1,51 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using Abp.Collections.Extensions;
-using Abp.Runtime.Session;
-using Abp.Timing;
-using Castle.Core.Logging;
+using System.Threading.Tasks;
+using Abp.Aspects;
+using Abp.Threading;
 using Castle.DynamicProxy;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Serialization;
 
 namespace Abp.Auditing
 {
     internal class AuditingInterceptor : IInterceptor
     {
-        public IAbpSession AbpSession { get; set; }
+        private readonly IAuditingHelper _auditingHelper;
 
-        public ILogger Logger { get; set; }
-
-        public IAuditingStore AuditingStore { get; set; }
-        
-        private readonly IAuditingConfiguration _configuration;
-
-        private readonly IAuditInfoProvider _auditInfoProvider;
-
-        public AuditingInterceptor(IAuditingConfiguration configuration, IAuditInfoProvider auditInfoProvider)
+        public AuditingInterceptor(IAuditingHelper auditingHelper)
         {
-            _configuration = configuration;
-            _auditInfoProvider = auditInfoProvider;
-            
-            AbpSession = NullAbpSession.Instance;
-            Logger = NullLogger.Instance;
-            AuditingStore = SimpleLogAuditingStore.Instance;
+            _auditingHelper = auditingHelper;
         }
 
         public void Intercept(IInvocation invocation)
         {
-            if (!AuditingHelper.ShouldSaveAudit(invocation.MethodInvocationTarget, _configuration, AbpSession))
+            if (AbpCrossCuttingConcerns.IsApplied(invocation.InvocationTarget, AbpCrossCuttingConcerns.Auditing))
             {
                 invocation.Proceed();
                 return;
             }
 
-            var auditInfo = new AuditInfo
+            if (!_auditingHelper.ShouldSaveAudit(invocation.MethodInvocationTarget))
             {
-                TenantId = AbpSession.TenantId,
-                UserId = AbpSession.UserId,
-                ServiceName = invocation.MethodInvocationTarget.DeclaringType != null
-                              ? invocation.MethodInvocationTarget.DeclaringType.FullName
-                              : "",
-                MethodName = invocation.MethodInvocationTarget.Name,
-                Parameters = ConvertArgumentsToJson(invocation),
-                ExecutionTime = Clock.Now
-            };
+                invocation.Proceed();
+                return;
+            }
 
-            _auditInfoProvider.Fill(auditInfo);
+            var auditInfo = _auditingHelper.CreateAuditInfo(invocation.MethodInvocationTarget, invocation.Arguments);
 
+            if (AsyncHelper.IsAsyncMethod(invocation.Method))
+            {
+                PerformAsyncAuditing(invocation, auditInfo);
+            }
+            else
+            {
+                PerformSyncAuditing(invocation, auditInfo);
+            }
+        }
+
+        private void PerformSyncAuditing(IInvocation invocation, AuditInfo auditInfo)
+        {
             var stopwatch = Stopwatch.StartNew();
+
             try
             {
                 invocation.Proceed();
@@ -69,41 +59,40 @@ namespace Abp.Auditing
             {
                 stopwatch.Stop();
                 auditInfo.ExecutionDuration = Convert.ToInt32(stopwatch.Elapsed.TotalMilliseconds);
-                AuditingStore.Save(auditInfo); //TODO: Call async when target method is async.
+                _auditingHelper.Save(auditInfo);
             }
         }
 
-        private string ConvertArgumentsToJson(IInvocation invocation)
+        private void PerformAsyncAuditing(IInvocation invocation, AuditInfo auditInfo)
         {
-            try
-            {
-                var parameters = invocation.MethodInvocationTarget.GetParameters();
-                if (parameters.IsNullOrEmpty())
-                {
-                    return "{}";
-                }
+            var stopwatch = Stopwatch.StartNew();
 
-                var dictionary = new Dictionary<string, object>();
-                for (int i = 0; i < parameters.Length; i++)
-                {
-                    var parameter = parameters[i];
-                    var argument = invocation.Arguments[i];
-                    dictionary[parameter.Name] = argument;
-                }
+            invocation.Proceed();
 
-                return JsonConvert.SerializeObject(
-                    dictionary,
-                    new JsonSerializerSettings
-                    {
-                        ContractResolver = new CamelCasePropertyNamesContractResolver()
-                    });
-            }
-            catch (Exception ex)
+            if (invocation.Method.ReturnType == typeof(Task))
             {
-                Logger.Warn("Could not serialize arguments for method: " + invocation.MethodInvocationTarget.Name);
-                Logger.Warn(ex.ToString(), ex);
-                return "{}";
+                invocation.ReturnValue = InternalAsyncHelper.AwaitTaskWithFinally(
+                    (Task) invocation.ReturnValue,
+                    exception => SaveAuditInfo(auditInfo, stopwatch, exception)
+                    );
             }
+            else //Task<TResult>
+            {
+                invocation.ReturnValue = InternalAsyncHelper.CallAwaitTaskWithFinallyAndGetResult(
+                    invocation.Method.ReturnType.GenericTypeArguments[0],
+                    invocation.ReturnValue,
+                    exception => SaveAuditInfo(auditInfo, stopwatch, exception)
+                    );
+            }
+        }
+
+        private void SaveAuditInfo(AuditInfo auditInfo, Stopwatch stopwatch, Exception exception)
+        {
+            stopwatch.Stop();
+            auditInfo.Exception = exception;
+            auditInfo.ExecutionDuration = Convert.ToInt32(stopwatch.Elapsed.TotalMilliseconds);
+
+            _auditingHelper.Save(auditInfo);
         }
     }
 }

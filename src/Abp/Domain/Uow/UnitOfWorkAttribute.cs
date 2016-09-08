@@ -7,8 +7,8 @@ namespace Abp.Domain.Uow
     /// <summary>
     /// This attribute is used to indicate that declaring method is atomic and should be considered as a unit of work.
     /// A method that has this attribute is intercepted, a database connection is opened and a transaction is started before call the method.
-    /// At the end of method call, transaction is commited and all changes applied to the database if there is no exception,
-    /// othervise it's rolled back. 
+    /// At the end of method call, transaction is committed and all changes applied to the database if there is no exception,
+    /// otherwise it's rolled back. 
     /// </summary>
     /// <remarks>
     /// This attribute has no effect if there is already a unit of work before calling this method, if so, it uses the same transaction.
@@ -17,16 +17,21 @@ namespace Abp.Domain.Uow
     public class UnitOfWorkAttribute : Attribute
     {
         /// <summary>
+        /// Scope option.
+        /// </summary>
+        public TransactionScopeOption? Scope { get; set; }
+
+        /// <summary>
         /// Is this UOW transactional?
         /// Uses default value if not supplied.
         /// </summary>
-        public bool? IsTransactional { get; private set; }
+        public bool? IsTransactional { get; set; }
 
         /// <summary>
         /// Timeout of UOW As milliseconds.
         /// Uses default value if not supplied.
         /// </summary>
-        public TimeSpan? Timeout { get; private set; }
+        public TimeSpan? Timeout { get; set; }
 
         /// <summary>
         /// If this UOW is transactional, this option indicated the isolation level of the transaction.
@@ -105,6 +110,30 @@ namespace Abp.Domain.Uow
         }
 
         /// <summary>
+        /// Creates a new <see cref="UnitOfWorkAttribute"/> object.
+        /// <see cref="IsTransactional"/> is automatically set to true.
+        /// </summary>
+        /// <param name="scope">Transaction scope</param>
+        public UnitOfWorkAttribute(TransactionScopeOption scope)
+        {
+            IsTransactional = true;
+            Scope = scope;
+        }
+
+        /// <summary>
+        /// Creates a new <see cref="UnitOfWorkAttribute"/> object.
+        /// <see cref="IsTransactional"/> is automatically set to true.
+        /// </summary>
+        /// <param name="scope">Transaction scope</param>
+        /// <param name="timeout">Transaction  timeout as milliseconds</param>
+        public UnitOfWorkAttribute(TransactionScopeOption scope, int timeout)
+        {
+            IsTransactional = true;
+            Scope = scope;
+            Timeout = TimeSpan.FromMilliseconds(timeout);
+        }
+
+        /// <summary>
         /// Gets UnitOfWorkAttribute for given method or null if no attribute defined.
         /// </summary>
         /// <param name="methodInfo">Method to get attribute</param>
@@ -131,7 +160,8 @@ namespace Abp.Domain.Uow
             {
                 IsTransactional = IsTransactional,
                 IsolationLevel = IsolationLevel,
-                Timeout = Timeout
+                Timeout = Timeout,
+                Scope = Scope
             };
         }
     }

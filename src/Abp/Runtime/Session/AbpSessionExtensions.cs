@@ -1,4 +1,6 @@
-﻿namespace Abp.Runtime.Session
+﻿using System;
+
+namespace Abp.Runtime.Session
 {
     /// <summary>
     /// Extension methods for <see cref="IAbpSession"/>.
@@ -32,10 +34,22 @@
         {
             if (!session.TenantId.HasValue)
             {
-                throw new AbpException("Session.TenantId is null! Possible problems: User is not logged in, current user in not tenant user or this is not a multi-tenant application.");
+                throw new AbpException("Session.TenantId is null! Possible problems: No user logged in or current logged in user in a host user (TenantId is always null for host users).");
             }
 
             return session.TenantId.Value;
+        }
+
+        /// <summary>
+        /// Creates <see cref="UserIdentifier"/> from given session.
+        /// Returns null if <see cref="IAbpSession.UserId"/> is null.
+        /// </summary>
+        /// <param name="session">The session.</param>
+        public static UserIdentifier ToUserIdentifier(this IAbpSession session)
+        {
+            return session.UserId == null
+                ? null
+                : new UserIdentifier(session.TenantId, session.GetUserId());
         }
     }
 }

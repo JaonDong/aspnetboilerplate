@@ -6,7 +6,7 @@ namespace Abp.Application.Services.Dto
     /// This DTO can be used as a simple item for a combobox/list.
     /// </summary>
     [Serializable]
-    public class ComboboxItemDto : IDto
+    public class ComboboxItemDto
     {
         /// <summary>
         /// Value of the item.
@@ -17,6 +17,11 @@ namespace Abp.Application.Services.Dto
         /// Display text of the item.
         /// </summary>
         public string DisplayText { get; set; }
+
+        /// <summary>
+        /// Is selected?
+        /// </summary>
+        public bool IsSelected { get; set; }
 
         /// <summary>
         /// Creates a new <see cref="ComboboxItemDto"/>.

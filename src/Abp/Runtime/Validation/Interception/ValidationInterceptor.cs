@@ -1,7 +1,6 @@
 ﻿using Abp.Application.Services;
-using Abp.Authorization.Interceptors;
+using Abp.Aspects;
 using Abp.Dependency;
-using Castle.Core;
 using Castle.DynamicProxy;
 
 namespace Abp.Runtime.Validation.Interception
@@ -11,30 +10,28 @@ namespace Abp.Runtime.Validation.Interception
     /// </summary>
     public class ValidationInterceptor : IInterceptor
     {
+        private readonly IIocResolver _iocResolver;
+
+        public ValidationInterceptor(IIocResolver iocResolver)
+        {
+            _iocResolver = iocResolver;
+        }
+
         public void Intercept(IInvocation invocation)
         {
-            new MethodInvocationValidator(
-                invocation.Method,
-                invocation.Arguments
-                ).Validate();
-
-            invocation.Proceed();
-        }
-    }
-
-    internal static class ValidationInterceptorRegistrar
-    {
-        public static void Initialize(IIocManager iocManager)
-        {
-            iocManager.IocContainer.Kernel.ComponentRegistered += Kernel_ComponentRegistered;
-        }
-
-        private static void Kernel_ComponentRegistered(string key, Castle.MicroKernel.IHandler handler)
-        {
-            if (typeof(IApplicationService).IsAssignableFrom(handler.ComponentModel.Implementation))
+            if (AbpCrossCuttingConcerns.IsApplied(invocation.InvocationTarget, AbpCrossCuttingConcerns.Validation))
             {
-                handler.ComponentModel.Interceptors.Add(new InterceptorReference(typeof(ValidationInterceptor)));
+                invocation.Proceed();
+                return;
             }
+
+            using (var validator = _iocResolver.ResolveAsDisposable<MethodInvocationValidator>())
+            {
+                validator.Object.Initialize(invocation.Method, invocation.Arguments);
+                validator.Object.Validate();
+            }
+            
+            invocation.Proceed();
         }
     }
 }

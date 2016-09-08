@@ -2,42 +2,31 @@
 using System.Linq;
 using Abp.Dependency;
 using Castle.Core;
-using Castle.MicroKernel;
 
 namespace Abp.Auditing
 {
-    internal class AuditingInterceptorRegistrar
+    internal static class AuditingInterceptorRegistrar
     {
-        private readonly IAuditingConfiguration _auditingConfiguration;
-        private readonly IIocManager _iocManager;
-
-        public AuditingInterceptorRegistrar(IAuditingConfiguration auditingConfiguration, IIocManager iocManager)
+        public static void Initialize(IIocManager iocManager)
         {
-            _auditingConfiguration = auditingConfiguration;
-            _iocManager = iocManager;
-        }
-
-        public void Initialize()
-        {
-            if (!_auditingConfiguration.IsEnabled)
+            var auditingConfiguration = iocManager.Resolve<IAuditingConfiguration>();
+            if (!auditingConfiguration.IsEnabled)
             {
                 return;
             }
 
-            _iocManager.IocContainer.Kernel.ComponentRegistered += Kernel_ComponentRegistered;
-        }
-
-        private void Kernel_ComponentRegistered(string key, IHandler handler)
-        {
-            if (ShouldIntercept(handler.ComponentModel.Implementation))
+            iocManager.IocContainer.Kernel.ComponentRegistered += (key, handler) =>
             {
-                handler.ComponentModel.Interceptors.Add(new InterceptorReference(typeof(AuditingInterceptor)));
-            }
+                if (ShouldIntercept(auditingConfiguration, handler.ComponentModel.Implementation))
+                {
+                    handler.ComponentModel.Interceptors.Add(new InterceptorReference(typeof(AuditingInterceptor)));
+                }
+            };
         }
-
-        private bool ShouldIntercept(Type type)
+        
+        private static bool ShouldIntercept(IAuditingConfiguration auditingConfiguration, Type type)
         {
-            if (_auditingConfiguration.Selectors.Any(selector => selector.Predicate(type)))
+            if (auditingConfiguration.Selectors.Any(selector => selector.Predicate(type)))
             {
                 return true;
             }

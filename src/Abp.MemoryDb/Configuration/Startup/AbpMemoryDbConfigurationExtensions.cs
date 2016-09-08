@@ -10,9 +10,9 @@ namespace Abp.Configuration.Startup
         /// <summary>
         /// Used to configure ABP MemoryDb module.
         /// </summary>
-        public static IAbpMemoryDbModuleConfiguration AbpMongoDb(this IModuleConfigurations configurations)
+        public static IAbpMemoryDbModuleConfiguration AbpMemoryDb(this IModuleConfigurations configurations)
         {
-            return configurations.AbpConfiguration.GetOrCreate("Modules.Abp.MemoryDb", () => configurations.AbpConfiguration.IocManager.Resolve<IAbpMemoryDbModuleConfiguration>());
+            return configurations.AbpConfiguration.Get<IAbpMemoryDbModuleConfiguration>();
         }
     }
 }
